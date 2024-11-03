@@ -1,0 +1,28 @@
+{
+  "extends": "fastify-tsconfig",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "declaration": true,
+    "noImplicitAny": false,
+    "removeComments": true,
+    "noLib": false,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "strictPropertyInitialization": false,
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "target": "es6",
+    "sourceMap": true,
+    "paths": {
+      "@*": ["src/*"],
+      "@shared/*": ["src/shared/*"],
+      "@database/*": ["src/v1/database/*"],
+      "@modules/*": ["src/v1/modules/*"],
+      "@v1/*": ["src/v1/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.json"],
+  "exclude": ["node_modules", "**/*.spec.ts", "**/*.test.ts"]
+}
