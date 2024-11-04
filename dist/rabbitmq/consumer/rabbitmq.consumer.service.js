@@ -44,28 +44,24 @@ let RabbitmqConsumerService = class RabbitmqConsumerService {
     }
     consume({ queue, options, callback }) {
         var _a;
-        try {
-            const channel = this.connector.channel;
-            channel.assertQueue(queue, { durable: true });
-            const fairDispatch = !options || options.fairDispatch;
-            if (fairDispatch) {
-                channel.prefetch((_a = options === null || options === void 0 ? void 0 : options.prefetch) !== null && _a !== void 0 ? _a : 1);
-            }
-            logger_1.default.info(`[${queue}] queue is ready for reading message`);
-            channel.consume(queue, (msg) => __awaiter(this, void 0, void 0, function* () {
-                const { data, options: msgOptions } = JSON.parse(msg.content.toString());
-                yield this.executeCallback(queue, callback, data, msgOptions);
-                channel.ack(msg);
-                console.log("consumer message options", msgOptions);
-            }), { noAck: false });
+        const channel = this.connector.channel;
+        channel.assertQueue(queue, { durable: true });
+        const fairDispatch = !options || options.fairDispatch;
+        if (fairDispatch) {
+            channel.prefetch((_a = options === null || options === void 0 ? void 0 : options.prefetch) !== null && _a !== void 0 ? _a : 1);
         }
-        catch (error) {
-            console.log(error);
-            throw error;
-        }
+        logger_1.default.info(`[${queue}] queue is ready for reading message`);
+        channel.consume(queue, (msg) => __awaiter(this, void 0, void 0, function* () {
+            const { data, options: msgOptions } = JSON.parse(msg.content.toString());
+            yield this.executeCallback(queue, callback, data, msgOptions);
+            channel.ack(msg);
+            logger_1.default.info(`[${queue}] Message consumed:`);
+            console.log(data);
+        }), { noAck: false });
     }
     listen({ queue, options, callback }) {
         try {
+            console.log(`received from ${queue}, ${callback}`);
             this.connector.onAfterConnect(() => {
                 this.consume({ queue, options, callback });
             });
@@ -76,19 +72,49 @@ let RabbitmqConsumerService = class RabbitmqConsumerService {
     }
     executeCallback(queue, callback, data, options) {
         return __awaiter(this, void 0, void 0, function* () {
+            console.log("executing callback");
+            if (!options) {
+                return yield callback(data, options);
+            }
+            console.log("consumer execute calback options", options);
+            if (options.attempt > Number(options.maxAttempts)) {
+                console.log({
+                    status: "TIMED_OUT",
+                    data: {
+                        failureCode: "Process timed out",
+                        failureMessage: "process timed out because its maximum attempt limit was reached",
+                    },
+                });
+                return {
+                    error: {
+                        status: "TIMED_OUT",
+                        data: {
+                            failureCode: "Process timed out",
+                            failureMessage: "process timed out because its maximum attempt limit was reached",
+                        },
+                    },
+                };
+            }
+            if (options.delay) {
+                delete options.delay;
+                return this.producer.produce({
+                    queue: rabbitmq_constants_1.Queue.DELAYED_PROCESS_QUEUE,
+                    data,
+                    options: Object.assign(Object.assign({}, options), { headers: Object.assign(Object.assign({}, options.headers), { targetQueue: queue, delayFrom: Date.now() }) }),
+                });
+            }
             try {
                 return yield callback(data, options);
             }
             catch (error) {
-                logger_1.default.error("*[executeCallback error]", error);
-                console.log("*[executeCallback] * consumer error", error);
+                logger_1.default.error("in error:", error);
                 const { retryInterval = 5000, expBackoffFactor = 1, maxAttempts = Infinity, headers = undefined, } = options;
                 const retryCount = !headers ? 1 : +headers.retryCount + 1;
                 logger_1.default.debug("retryCount:", retryCount, maxAttempts);
                 if (retryCount > maxAttempts) {
                     return callback(data, {
                         error: {
-                            status: "TIMES_OUT",
+                            status: "TIMED_OUT",
                             data: {
                                 failureCode: "Process times out",
                                 failureMessage: "process timed out because its maximum attempt limit was reached",

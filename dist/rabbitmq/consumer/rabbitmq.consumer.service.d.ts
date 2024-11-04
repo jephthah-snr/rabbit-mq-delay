@@ -8,5 +8,13 @@ export declare class RabbitmqConsumerService {
     constructor(connector: RabbitmqConnectorService, producer: RabbitMqProducerService);
     consume<T>({ queue, options, callback }: ConsumeArgs<T>): void;
     listen<T>({ queue, options, callback }: ConsumeArgs<T>): void;
-    executeCallback<T>(queue: Queue, callback: ConsumerListenerCallback<T>, data: T, options: ConsumerOptions): Promise<void>;
+    executeCallback<T>(queue: Queue, callback: ConsumerListenerCallback<T>, data: T, options: ConsumerOptions): Promise<void | {
+        error: {
+            status: string;
+            data: {
+                failureCode: string;
+                failureMessage: string;
+            };
+        };
+    }>;
 }

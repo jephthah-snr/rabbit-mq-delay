@@ -8,7 +8,8 @@ export default class WebhookController {
 
   sendWebhook = async (req: FastifyRequest, res: FastifyReply) => {
     try {
-      await this.rabbitService.publishDelay();
+      this.rabbitService.publishDelay();
+      return res.status(200).send({ sent: true });
     } catch (error: any) {
       console.error("Error sending webhook event:", error);
       res.status(500).send({

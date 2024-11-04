@@ -68,6 +68,13 @@ let RabbitService = class RabbitService {
                         DataView: "true",
                         added_timneout: "true",
                     },
+                    options: {
+                        delay: true,
+                        retry: true,
+                        maxAttempts: 5,
+                        expBackoffFactor: 1.2,
+                        retryInterval: 2000,
+                    },
                 }, true);
             }
             catch (error) {
@@ -79,11 +86,23 @@ let RabbitService = class RabbitService {
         return __awaiter(this, void 0, void 0, function* () {
             console.log("Got data-x");
             console.log(data);
+            const { updatedOptions } = data;
+            console.log("Data options", data.updatedOptions);
+            this.rabbitProducer.produce({
+                queue: rabbitmq_constants_1.Queue.PAYMENT_NOTIFY,
+                data: {
+                    is_check: "true",
+                    DataView: "true",
+                    added_timneout: "true",
+                },
+                options: Object.assign(Object.assign({}, updatedOptions), { delay: true }),
+            });
         });
     }
     delayQueue(data, options) {
         return __awaiter(this, void 0, void 0, function* () {
             console.log("Delay Queue Method");
+            console.log(options);
             if (!options || !options.headers || !options.retryInterval) {
                 throw new error_util_1.default(http_status_1.default.BAD_REQUEST, "No options");
             }
@@ -95,9 +114,10 @@ let RabbitService = class RabbitService {
             const delayTo = delayFrom + exponentialRetryInterval;
             const timeLeft = delayTo - Date.now();
             if (timeLeft > 0) {
+                console.log("waiting time left", timeLeft);
                 yield (0, promises_1.setTimeout)(timeLeft);
             }
-            const updatedOptions = Object.assign(Object.assign({}, options), { attempt: attempt + 1, retryInterval: exponentialRetryInterval, delay: true });
+            const updatedOptions = Object.assign(Object.assign({}, options), { attempt: attempt + 1, retryInterval: exponentialRetryInterval });
             console.log("re-queung with updated options from delay queue", {
                 queue: options.headers.targetQueue,
                 data,

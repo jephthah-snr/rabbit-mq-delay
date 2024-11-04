@@ -18,44 +18,40 @@ export class RabbitmqConsumerService {
   ) {}
 
   consume<T>({ queue, options, callback }: ConsumeArgs<T>) {
-    try {
-      const channel = this.connector.channel;
-      channel.assertQueue(queue, { durable: true });
+    const channel = this.connector.channel;
+    channel.assertQueue(queue, { durable: true });
 
-      const fairDispatch = !options || options.fairDispatch;
+    const fairDispatch = !options || options.fairDispatch;
 
-      if (fairDispatch) {
-        channel.prefetch(options?.prefetch ?? 1);
-      }
-
-      logger.info(`[${queue}] queue is ready for reading message`);
-
-      channel.consume(
-        queue,
-        async (msg: ConsumeMessage) => {
-          const { data, options: msgOptions } = JSON.parse(
-            msg.content.toString()
-          );
-          await this.executeCallback(
-            queue,
-            callback,
-            data,
-            msgOptions as ConsumerOptions
-          );
-          channel.ack(msg);
-
-          console.log("consumer message options", msgOptions);
-        },
-        { noAck: false }
-      );
-    } catch (error) {
-      console.log(error);
-      throw error;
+    if (fairDispatch) {
+      channel.prefetch(options?.prefetch ?? 1);
     }
+
+    logger.info(`[${queue}] queue is ready for reading message`);
+
+    channel.consume(
+      queue,
+      async (msg: ConsumeMessage) => {
+        const { data, options: msgOptions } = JSON.parse(
+          msg.content.toString()
+        );
+        await this.executeCallback(
+          queue,
+          callback,
+          data,
+          msgOptions as ConsumerOptions
+        );
+        channel.ack(msg);
+        logger.info(`[${queue}] Message consumed:`);
+        console.log(data);
+      },
+      { noAck: false }
+    );
   }
 
   listen<T>({ queue, options, callback }: ConsumeArgs<T>) {
     try {
+      console.log(`received from ${queue}, ${callback}`);
       this.connector.onAfterConnect(() => {
         this.consume({ queue, options, callback });
       });
@@ -72,37 +68,54 @@ export class RabbitmqConsumerService {
     data: T,
     options: ConsumerOptions
   ) {
-    // if (options.delay) {
-    //   console.log("options from execute callback", options);
-    //   const delayQueuePayload = {
-    //     queue: Queue.DELAYED_PROCESS_QUEUE,
-    //     data,
-    //     options: {
-    //       delay: options.delay,
-    //       retry: options.retry,
-    //       maxAttempts: options.maxAttempts || 5,
-    //       expBackoffFactor: options.expBackoffFactor || 1.5,
-    //       retryInterval: options.retryInterval || 2000,
-    //     },
-    //     headers: {
-    //       ...options.headers,
-    //       targetQueue: queue,
-    //       delayFrom: Date.now(),
-    //     },
-    //   };
-    //   console.log(
-    //     `#################### - delay queue from consumer ${queue}`,
-    //     delayQueuePayload
-    //   );
+    console.log("executing callback");
+    if (!options) {
+      return await callback(data, options);
+    }
 
-    //   console.log("sending new event, new event to queue -", queue);
-    //   return this.producer.produce(delayQueuePayload);
-    // }
+    console.log("consumer execute calback options", options);
+
+    if ((options.attempt as number) > Number(options.maxAttempts)) {
+      console.log({
+        status: "TIMED_OUT",
+        data: {
+          failureCode: "Process timed out",
+          failureMessage:
+            "process timed out because its maximum attempt limit was reached",
+        },
+      });
+      return {
+        error: {
+          status: "TIMED_OUT",
+          data: {
+            failureCode: "Process timed out",
+            failureMessage:
+              "process timed out because its maximum attempt limit was reached",
+          },
+        },
+      };
+    }
+
+    if (options.delay) {
+      delete options.delay;
+      return this.producer.produce({
+        queue: Queue.DELAYED_PROCESS_QUEUE,
+        data,
+        options: {
+          ...options,
+          headers: {
+            ...options.headers,
+            targetQueue: queue,
+            delayFrom: Date.now(),
+          },
+        },
+      });
+    }
+
     try {
       return await callback(data, options);
-    } catch (error: any) {
-      logger.error("*[executeCallback error]", error);
-      console.log("*[executeCallback] * consumer error", error);
+    } catch (error) {
+      logger.error("in error:", error);
 
       const {
         retryInterval = 5000,
@@ -118,7 +131,7 @@ export class RabbitmqConsumerService {
       if (retryCount > maxAttempts) {
         return callback(data, {
           error: {
-            status: "TIMES_OUT",
+            status: "TIMED_OUT",
             data: {
               failureCode: "Process times out",
               failureMessage:

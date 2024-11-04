@@ -43,13 +43,13 @@ export default class RabbitService {
             DataView: "true",
             added_timneout: "true",
           },
-          // options: {
-          //   delay: true,
-          //   retry: true,
-          //   maxAttempts: 5,
-          //   expBackoffFactor: 1.2,
-          //   retryInterval: 2000,
-          // },
+          options: {
+            delay: true,
+            retry: true,
+            maxAttempts: 5,
+            expBackoffFactor: 1.2,
+            retryInterval: 2000,
+          },
         },
         true
       );
@@ -61,10 +61,24 @@ export default class RabbitService {
   async testResponse(data: any) {
     console.log("Got data-x");
     console.log(data);
+    const { updatedOptions } = data;
+    console.log("Data options", data.updatedOptions);
+
+    this.rabbitProducer.produce({
+      queue: Queue.PAYMENT_NOTIFY,
+      data: {
+        is_check: "true",
+        DataView: "true",
+        added_timneout: "true",
+      },
+      options: { ...updatedOptions, delay: true },
+    });
   }
 
   public async delayQueue(data: any, options?: ConsumerOptions) {
     console.log("Delay Queue Method");
+
+    console.log(options);
 
     if (!options || !options.headers || !options.retryInterval) {
       throw new AppError(httpStatus.BAD_REQUEST, "No options");
@@ -80,6 +94,7 @@ export default class RabbitService {
     const timeLeft = delayTo - Date.now();
 
     if (timeLeft > 0) {
+      console.log("waiting time left", timeLeft);
       await wait(timeLeft);
     }
 
@@ -87,7 +102,6 @@ export default class RabbitService {
       ...options,
       attempt: attempt + 1, // Increment attempt count
       retryInterval: exponentialRetryInterval,
-      delay: true,
     };
 
     console.log("re-queung with updated options from delay queue", {

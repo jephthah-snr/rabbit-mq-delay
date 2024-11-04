@@ -37,7 +37,8 @@ let WebhookController = class WebhookController {
             writable: true,
             value: (req, res) => __awaiter(this, void 0, void 0, function* () {
                 try {
-                    yield this.rabbitService.publishDelay();
+                    this.rabbitService.publishDelay();
+                    return res.status(200).send({ sent: true });
                 }
                 catch (error) {
                     console.error("Error sending webhook event:", error);
